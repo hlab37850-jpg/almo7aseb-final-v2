@@ -27,7 +27,7 @@ fun BillList(n: Nav, tr: Int) {
     var q by remember { mutableStateOf("") }
     var sel by remember { mutableStateOf<BillRow?>(null) }
     var del by remember { mutableStateOf<BillRow?>(null) }
-    Page(n, billTitle(tr), actions = { BarIcon("🔍") { search = !search } }, bottom = { BottomBar({ n.push(Route("invoice", tr)) }, "........") }) {
+    Page(n, billTitle(tr), actions = { BarIcon("🔍") { search = !search } }, bottom = { BottomBar({ n.push(Route("invoice", tr.toLong())) }, "........") }) {
         if (search) Field(q, { q = it }, "بحث بالاسم أو الرقم")
         TableHeader(listOf("رقم" to 1f, "التاريخ" to 1.5f, "الإسم" to 2f, "المبلغ" to 1.3f))
         val shown = rows.filter { q.isBlank() || it.party.contains(q, true) || it.no.toString() == q }
