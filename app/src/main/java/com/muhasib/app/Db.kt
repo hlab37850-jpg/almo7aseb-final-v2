@@ -449,7 +449,7 @@ class Db(private val ctx: Context) : SQLiteOpenHelper(ctx, DB_NAME, null, 1) {
     fun addUser(userName: String, name: String, pwd: String) =
         tx { x("insert into users(user_name,name,pwd,is_active,cash_id,br_id) values(?,?,?,1,-3,0)", userName.trim(), name.trim(), sha(pwd)) }
     fun login(userName: String, pwd: String): Opt? =
-        opts("select id,name from users where is_active=1 and user_name=? and (pwd=? or pwd=?)", userName.trim(), sha(pwd), pwd).firstOrNull()
+        opts("select id,name from users where is_active=1 and user_name=? and pwd=?", userName.trim(), sha(pwd)).firstOrNull()
     fun userName(id: Long) = one("select name from users where id=?", id) ?: ""
     fun privs(userId: Long) = q(
         """select p.screen_id, s.name, p.view, p.[new], p.edit, p.del from user_priv p join screens s on s.id=p.screen_id
