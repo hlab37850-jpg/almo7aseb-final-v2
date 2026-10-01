@@ -9,7 +9,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,6 +30,17 @@ fun BillList(n: Nav, tr: Int) {
     var q by remember { mutableStateOf("") }
     var sel by remember { mutableStateOf<BillRow?>(null) }
     var del by remember { mutableStateOf<BillRow?>(null) }
+    var pdfBill by remember { mutableStateOf<BillRow?>(null) }
+    val ctx = LocalContext.current
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val r = pdfBill
+        if (uri != null && r != null) runCatching {
+            ctx.contentResolver.openOutputStream(uri)!!.use { out ->
+                PdfUtil.invoice(out, billTitle(tr), r.no, r.date, r.party, r.amount, n.db.billLines(r.id))
+            }
+        }.onSuccess { n.toast("تم حفظ ملف PDF") }.onFailure { n.toast("فشل إنشاء PDF: ${it.message}") }
+        pdfBill = null
+    }
     Page(n, billTitle(tr), actions = { BarIcon("🔍") { search = !search } }, bottom = { BottomBar({ n.push(Route("invoice", tr.toLong())) }, "........") }) {
         if (search) Field(q, { q = it }, "بحث بالاسم أو الرقم")
         TableHeader(listOf("رقم" to 1f, "التاريخ" to 1.5f, "الإسم" to 2f, "المبلغ" to 1.3f))
@@ -47,7 +61,13 @@ fun BillList(n: Nav, tr: Int) {
         AlertDialog(
             onDismissRequest = { sel = null }, title = { Text("فاتورة رقم ${r.no}") },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) { n.db.billLines(r.id).forEach { Text(it, Modifier.padding(vertical = 4.dp)) }; Text("الإجمالي: ${money(r.amount)}", fontWeight = FontWeight.Bold) } },
-            confirmButton = { TextButton(onClick = { del = r; sel = null }) { Text("حذف", color = Debit) } },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { pdfBill = r; sel = null; pdfLauncher.launch("invoice-${r.no}.pdf") }) { Text("PDF") }
+                    if (n.db.canDo(n.userId, tr, "edit")) TextButton(onClick = { sel = null; n.push(Route("invoice", tr.toLong(), r.id.toString())) }) { Text("تعديل") }
+                    if (n.db.canDo(n.userId, tr, "del")) TextButton(onClick = { del = r; sel = null }) { Text("حذف", color = Debit) }
+                }
+            },
             dismissButton = { TextButton(onClick = { sel = null }) { Text("إغلاق") } }
         )
     }
@@ -60,38 +80,39 @@ fun BillList(n: Nav, tr: Int) {
 
 // ------------------------------------------------------------------------------------- invoice
 @Composable
-fun InvoiceScreen(n: Nav, tr: Int) {
+fun InvoiceScreen(n: Nav, tr: Int, editId: Long? = null) {
     val db = n.db
     val items = remember { db.items() }
     val itemOpts = remember { items.map { Opt(it.id, it.name) } }
     val branches = remember { db.branches() }
     val currs = remember { db.currencies() }
     val taxes = remember { db.taxes() }
+    val editing = remember(editId) { editId?.let { db.billEdit(it) } }
     val party = remember {
         when (tr) { 1, 8 -> db.accountOpts(0); 2, 9 -> db.accountOpts(1); else -> db.accountOpts(0, 1) }
     }
     val hasCash = tr in listOf(1, 2)
     val salesSide = tr in listOf(1, 8, 11)
 
-    var credit by remember { mutableStateOf(true) }
-    var isBack by remember { mutableStateOf(false) }
-    var brId by remember { mutableLongStateOf(branches.firstOrNull()?.id ?: 0L) }
-    var currId by remember { mutableLongStateOf(0L) }
-    var partyId by remember { mutableStateOf<Long?>(null) }
-    var date by remember { mutableStateOf(db.today()) }
-    var remarks by remember { mutableStateOf("") }
-    val lines = remember { mutableStateListOf<Line>() }
+    var credit by remember(editId) { mutableStateOf(editing?.cash != true) }
+    var isBack by remember(editId) { mutableStateOf(editing?.isBack ?: false) }
+    var brId by remember(editId) { mutableLongStateOf(editing?.brId ?: branches.firstOrNull()?.id ?: 0L) }
+    var currId by remember(editId) { mutableLongStateOf(editing?.currId ?: 0L) }
+    var partyId by remember(editId) { mutableStateOf(editing?.cusId) }
+    var date by remember(editId) { mutableStateOf(editing?.date ?: db.today()) }
+    var remarks by remember(editId) { mutableStateOf(editing?.remarks ?: "") }
+    val lines = remember(editId) { mutableStateListOf<Line>().apply { editing?.lines?.let { addAll(it) } } }
     var picked by remember { mutableStateOf<Item?>(null) }
     var unit by remember { mutableStateOf<UnitOpt?>(null) }
     var qty by remember { mutableStateOf("1") }
     var price by remember { mutableStateOf("") }
     var pickKey by remember { mutableIntStateOf(0) }
-    var disc by remember { mutableStateOf("") }
-    var taxId by remember { mutableLongStateOf(-1L) }
-    var fees by remember { mutableStateOf("") }
-    var paid by remember { mutableStateOf("") }
+    var disc by remember(editId) { mutableStateOf(if (editing?.discount ?: 0.0) != 0.0) editing!!.discount.toString() else "" }
+    var taxId by remember(editId) { mutableLongStateOf(editing?.taxId ?: -1L) }
+    var fees by remember(editId) { mutableStateOf(if ((editing?.fees ?: 0.0) != 0.0) editing!!.fees.toString() else "") }
+    var paid by remember(editId) { mutableStateOf(if ((editing?.paid ?: 0.0) != 0.0) editing!!.paid.toString() else "") }
 
-    val no = remember(tr, isBack, brId) { db.nextBillNo(tr, isBack, brId) }
+    val no = remember(editId, tr, isBack, brId) { editing?.no ?: db.nextBillNo(tr, isBack, brId) }
     val uopts = remember(picked) { picked?.let { db.unitsOf(it.id) } ?: emptyList() }
     val taxPct = if (hasCash) (taxes.firstOrNull { it.id == taxId }?.per ?: 0.0) else 0.0
     val sub = lines.sumOf { it.qty * it.price }
@@ -112,9 +133,10 @@ fun InvoiceScreen(n: Nav, tr: Int) {
         if (lines.isEmpty()) return n.toast("أضف صنفاً واحداً على الأقل")
         if ((!hasCash || credit) && partyId == null) return n.toast(if (salesSide) "اختر العميل" else "اختر المورد")
         val cus = partyId ?: if (tr == 1) -5L else if (tr == 2) -6L else null
-        val e = db.saveBill(BillIn(tr, isBack, hasCash && !credit, brId, currId, cus, date, remarks, lines.toList(), if (tr in listOf(1, 2, 8, 9)) num(disc) else 0.0,
-            taxId, taxPct, if (hasCash) num(fees) else 0.0, paidV, n.userId))
-        if (e == null) { n.toast("تم حفظ الفاتورة"); n.bump(); n.pop() } else n.toast(e)
+        val input = BillIn(tr, isBack, hasCash && !credit, brId, currId, cus, date, remarks, lines.toList(), if (tr in listOf(1, 2, 8, 9)) num(disc) else 0.0,
+            taxId, taxPct, if (hasCash) num(fees) else 0.0, paidV, n.userId)
+        val e = if (editing != null) db.updateBill(editing.id, input, editing.no) else db.saveBill(input)
+        if (e == null) { n.toast(if (editing != null) "تم تحديث الفاتورة" else "تم حفظ الفاتورة"); n.bump(); n.pop() } else n.toast(e)
     }
 
     val title = when (tr) {
