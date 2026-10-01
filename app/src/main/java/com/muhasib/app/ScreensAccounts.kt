@@ -100,7 +100,37 @@ fun StatementBody(n: Nav, id: Long) {
 }
 
 @Composable
-fun StatementScreen(n: Nav, id: Long, name: String) = Page(n, "كشف حساب: $name") { StatementBody(n, id) }
+fun StatementScreen(n: Nav, id: Long, name: String) {
+    Page(n, "كشف حساب: $name", actions = {
+        if (n.db.canDo(n.userId, 11, "edit")) BarIcon("✎") { n.push(Route("editacc", id, name)) }
+    }) { StatementBody(n, id) }
+}
+
+@Composable
+fun EditAccountScreen(n: Nav, id: Long) {
+    val data = remember(id) { n.db.accountDetails(id) }
+    if (data == null) {
+        Page(n, "تعديل الحساب") { Empty("الحساب غير موجود") }
+        return
+    }
+    var name by remember(id) { mutableStateOf(data.name) }
+    var phone by remember(id) { mutableStateOf(data.phone) }
+    var addr by remember(id) { mutableStateOf(data.address) }
+    var vat by remember(id) { mutableStateOf(data.vat) }
+    Page(n, "تعديل الحساب", actions = {
+        BarIcon("💾") {
+            val e = n.db.updateAccount(id, name, phone, addr, vat)
+            if (e == null) { n.toast("تم حفظ التعديلات"); n.bump(); n.pop() } else n.toast(e)
+        }
+    }) {
+        Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
+            Field(name, { name = it }, "اسم الحساب")
+            Field(phone, { phone = it }, "الهاتف")
+            Field(addr, { addr = it }, "العنوان")
+            Field(vat, { vat = it }, "الرقم الضريبي")
+        }
+    }
+}
 
 @Composable
 fun CashScreen(n: Nav) {
@@ -152,7 +182,7 @@ fun CurrPricesScreen(n: Nav) {
     Page(n, "سعر العملات") {
         Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
             Drop("اختر العملة", currs, curr) { curr = it }
-            Field(date, { date = it }, "من تاريخ (yyyy-MM-dd)"); Field(price, { price = it }, "السعر مقابل العملة المحلية", kb = numKb)
+            DatePickerField(date, { date = it }, "من تاريخ (yyyy-MM-dd)"); Field(price, { price = it }, "السعر مقابل العملة المحلية", kb = numKb)
             PillButton("حفظ السعر", Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp)) {
                 if (curr == null) n.toast("اختر العملة") else if (num(price) <= 0) n.toast("السعر غير صحيح")
                 else { val e = n.db.setCurrencyPrice(curr!!, date, num(price)); if (e == null) n.bump() else n.toast(e) }

@@ -16,6 +16,7 @@ data class Opt(val id: Long, val name: String)
 data class Tax(val id: Long, val name: String, val per: Double)
 data class UnitOpt(val id: Long, val name: String, val uVal: Double)
 data class Acc(val id: Long, val name: String, val phone: String, val bal: Map<String, Double>)
+data class AccountDetails(val id: Long, val name: String, val phone: String, val address: String, val vat: String)
 data class Item(
     val id: Long, val name: String, val unitId: Long, val unit: String, val barcode: String,
     val qty: Double, val price: Double, val typeId: Long, val cost: Double
@@ -27,6 +28,13 @@ data class BillIn(
     val taxId: Long, val taxPct: Double, val fees: Double, val paid: Double, val userId: Long
 )
 data class BillRow(val id: Long, val no: Long, val date: String, val party: String, val amount: Double, val isBack: Boolean)
+data class BillEdit(
+    val id: Long, val no: Long, val tr: Int, val isBack: Boolean, val cash: Boolean,
+    val brId: Long, val currId: Long, val cusId: Long?, val date: String, val remarks: String,
+    val discount: Double, val taxId: Long, val taxPct: Double, val fees: Double, val paid: Double,
+    val lines: List<Line>
+)
+data class ClosingRow(val id: Long, val date: String, val created: String)
 data class VRow(val no: Long, val tr: Int, val date: String, val total: Double, val note: String)
 data class VLine(val accId: Long, val name: String, val amount: Double, val note: String)
 data class StRow(val date: String, val note: String, val amount: Double, val running: Double)
@@ -249,6 +257,101 @@ class Db(private val ctx: Context) : SQLiteOpenHelper(ctx, DB_NAME, null, 1) {
 
     fun deleteBill(id: Long): String? = tx { x("delete from bill_transactions where bill_id=?", id); x("delete from bills where id=?", id) }
 
+
+    fun billEdit(id: Long): BillEdit? {
+        val head = q(
+            """select id,bill_no2,tr_type,is_back,bill_type,br_id,curr_id,cus_id,date_,ifnull(remarks,''),
+                      ifnull(d_amount,0),ifnull(tax_id,-1),ifnull(t_val,0),ifnull(cost2,0),ifnull(paid_amount,0)
+               from bills where id=?""", id
+        ) { c ->
+            BillEdit(
+                c.getLong(0), c.getLong(1), c.getInt(2), c.getInt(3) == 1, c.getInt(4) == 1,
+                c.getLong(5), c.getLong(6), if (c.isNull(7)) null else c.getLong(7), c.getString(8), c.getString(9),
+                c.getDouble(10), c.getLong(11), c.getDouble(12), c.getDouble(13), c.getDouble(14), emptyList()
+            )
+        }.firstOrNull() ?: return null
+        val itemMap = items().associateBy { it.id }
+        val lines = q(
+            """select item_id,qty_pr,unit_id,u_val,
+                      case when tr_type in (2,9,21) then cost_price*u_val else sls_u_price*u_val end
+               from bill_transactions t join bills b on b.id=t.bill_id where t.bill_id=? order by t.rowid""", id
+        ) { c -> c }.mapNotNull { c ->
+            val item = itemMap[c.getLong(0)] ?: return@mapNotNull null
+            val uid = c.getLong(2)
+            val u = UnitOpt(uid, unitsOf(item.id).firstOrNull { it.id == uid }?.name ?: item.unit, c.getDouble(3))
+            Line(item, u, c.getDouble(1), c.getDouble(4))
+        }
+        return head.copy(lines = lines)
+    }
+
+    fun updateBill(id: Long, b: BillIn, originalNo: Long): String? = tx {
+        one("select date_ from bills where id=?", id) ?: throw IllegalArgumentException("الفاتورة غير موجودة")
+        if (b.date.isBlank()) throw IllegalArgumentException("التاريخ غير صحيح")
+        x("delete from bill_transactions where bill_id=?", id)
+        x("delete from bills where id=?", id)
+        val sub = b.lines.sumOf { it.qty * it.price }
+        val net = sub - b.discount
+        val tax = net * b.taxPct / 100.0
+        val total = net + tax + b.fees
+        if (b.tr in listOf(1, 2) && !b.cash && b.paid > total + 0.0001) throw IllegalArgumentException("المبلغ المدفوع أكبر من قيمة الفاتورة")
+        val billType = when (b.tr) { 1, 2 -> if (b.cash) 1 else 2; 11, 21 -> 2; else -> 0 }
+        x("""insert into bills(date_,time_,tr_type,bill_type,is_back,br_id,cus_id,amount,d_amount,tax_id,t_val,tax_amount,cost2,
+             paid_amount,cash_id,curr_id,bill_no2,remarks,user_id,last_user,last_update) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,-3,?,?,?, ?,?,?)""",
+            b.date, now(), b.tr, billType, if (b.isBack) 1 else 0, b.brId, b.cusId, total, b.discount, b.taxId, b.taxPct, tax, b.fees,
+            if (b.cash) 0.0 else b.paid, b.currId, originalNo, b.remarks, b.userId, b.userId, now())
+        val bid = n("select max(id) from bills")
+        for (l in b.lines) {
+            val basePrice = l.price / l.unit.uVal
+            x("""insert into bill_transactions(bill_id,item_id,item_type_id,curr_id,qty,qty_pr,qty_t,cost_price,sls_u_price,d_amount,unit_id,u_val,base_unit)
+                 values(?,?,?,?,?,?,?,?,?,0,?,?,?)""",
+                bid, l.item.id, l.item.typeId, b.currId, l.qty, l.qty, l.qty.toString(),
+                if (b.tr in listOf(2, 9, 21)) basePrice else 0.0,
+                if (b.tr in listOf(1, 8, 11)) basePrice else 0.0,
+                l.unit.id, l.unit.uVal, l.item.unitId)
+        }
+        if (b.discount != 0.0 || b.fees != 0.0) x("update bills set remarks=remarks where id=?", bid)
+    }
+
+    fun closingYears(): List<ClosingRow> = q(
+        "select id,date_,ifnull(now_,'') from closing_year order by date_ desc"
+    ) { ClosingRow(it.getLong(0), it.getString(1), it.getString(2)) }
+
+    fun closeYear(date: String): String? = tx {
+        val d = date.trim()
+        if (!Regex("""\\d{4}-\\d{2}-\\d{2}""").matches(d)) throw IllegalArgumentException("صيغة التاريخ يجب أن تكون yyyy-MM-dd")
+        val last = one("select max(date_) from closing_year")
+        if (last != null && d <= last) throw IllegalArgumentException("يجب أن يكون تاريخ الإقفال بعد آخر فترة مقفلة")
+        x("insert into closing_year(date_,cnt,online_ref2) values(?,0,?)", d, "local-close-" + d + "-" + System.currentTimeMillis())
+    }
+
+    fun reopenLastYear(): String? = tx {
+        val id = one("select id from closing_year order by date_ desc limit 1") ?: throw IllegalArgumentException("لا توجد فترة مقفلة")
+        x("delete from closing_year where id=?", id)
+    }
+
+    fun canDo(userId: Long, screenId: Int, column: String): Boolean {
+        if (userId == 0L) return true
+        require(column in listOf("view", "new", "edit", "del"))
+        return (one("select [$column] from user_priv where user_id=? and screen_id=?", userId, screenId) ?: "0") == "1"
+    }
+
+    fun changePassword(userId: Long, oldPwd: String, newPwd: String): String? = tx {
+        if (newPwd.length < 4) throw IllegalArgumentException("كلمة المرور قصيرة (4 أحرف على الأقل)")
+        val ok = one("select pwd from users where id=?", userId)
+        if (ok == null || (ok != sha(oldPwd) && ok != oldPwd)) throw IllegalArgumentException("كلمة المرور الحالية غير صحيحة")
+        x("update users set pwd=? where id=?", sha(newPwd), userId)
+    }
+
+    fun accountDetails(id: Long): AccountDetails? = q(
+        "select id,name,ifnull(gsm,''),ifnull(ADDRESS,''),ifnull(vat_no,'') from customers where id=?", id
+    ) { AccountDetails(it.getLong(0), it.getString(1), it.getString(2), it.getString(3), it.getString(4)) }.firstOrNull()
+
+    fun updateAccount(id: Long, name: String, phone: String, address: String, vat: String) = tx {
+        if (name.isBlank()) throw IllegalArgumentException("اسم الحساب مطلوب")
+        x("update customers set name=?,gsm=?,ADDRESS=?,vat_no=? where id=?", name.trim(), phone.trim(), address.trim(), vat.trim(), id)
+    }
+
+
     // ------------------------------------------------------------------ vouchers, journal, opening entries
     fun nextVoucherNo(tr: Int): Long = (one("select ifnull(max(p_id),0)+1 from transactions where bill_id=0 and tr_type=?", tr) ?: "1").toLong()
 
@@ -351,7 +454,7 @@ class Db(private val ctx: Context) : SQLiteOpenHelper(ctx, DB_NAME, null, 1) {
     fun addUser(userName: String, name: String, pwd: String) =
         tx { x("insert into users(user_name,name,pwd,is_active,cash_id,br_id) values(?,?,?,1,-3,0)", userName.trim(), name.trim(), sha(pwd)) }
     fun login(userName: String, pwd: String): Opt? =
-        opts("select id,name from users where is_active=1 and user_name=? and (pwd=? or pwd=?)", userName.trim(), sha(pwd), pwd).firstOrNull()
+        opts("select id,name from users where is_active=1 and user_name=? and pwd=?", userName.trim(), sha(pwd)).firstOrNull()
     fun userName(id: Long) = one("select name from users where id=?", id) ?: ""
     fun privs(userId: Long) = q(
         """select p.screen_id, s.name, p.view, p.[new], p.edit, p.del from user_priv p join screens s on s.id=p.screen_id
