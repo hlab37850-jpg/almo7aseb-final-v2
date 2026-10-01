@@ -275,7 +275,7 @@ class Db(private val ctx: Context) : SQLiteOpenHelper(ctx, DB_NAME, null, 1) {
             """select item_id,qty_pr,unit_id,u_val,
                       case when tr_type in (2,9,21) then cost_price*u_val else sls_u_price*u_val end
                from bill_transactions t join bills b on b.id=t.bill_id where t.bill_id=? order by t.rowid""", id
-        ).mapNotNull { c ->
+        ) { c -> c }.mapNotNull { c ->
             val item = itemMap[c.getLong(0)] ?: return@mapNotNull null
             val uid = c.getLong(2)
             val u = UnitOpt(uid, unitsOf(item.id).firstOrNull { it.id == uid }?.name ?: item.unit, c.getDouble(3))
