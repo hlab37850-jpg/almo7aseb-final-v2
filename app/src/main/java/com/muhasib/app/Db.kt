@@ -16,6 +16,7 @@ data class Opt(val id: Long, val name: String)
 data class Tax(val id: Long, val name: String, val per: Double)
 data class UnitOpt(val id: Long, val name: String, val uVal: Double)
 data class Acc(val id: Long, val name: String, val phone: String, val bal: Map<String, Double>)
+data class AccountDetails(val id: Long, val name: String, val phone: String, val address: String, val vat: String)
 data class Item(
     val id: Long, val name: String, val unitId: Long, val unit: String, val barcode: String,
     val qty: Double, val price: Double, val typeId: Long, val cost: Double
@@ -340,6 +341,10 @@ class Db(private val ctx: Context) : SQLiteOpenHelper(ctx, DB_NAME, null, 1) {
         if (ok == null || (ok != sha(oldPwd) && ok != oldPwd)) throw IllegalArgumentException("كلمة المرور الحالية غير صحيحة")
         x("update users set pwd=? where id=?", sha(newPwd), userId)
     }
+
+    fun accountDetails(id: Long): AccountDetails? = q(
+        "select id,name,ifnull(gsm,''),ifnull(ADDRESS,''),ifnull(vat_no,'') from customers where id=?", id
+    ) { AccountDetails(it.getLong(0), it.getString(1), it.getString(2), it.getString(3), it.getString(4)) }.firstOrNull()
 
     fun updateAccount(id: Long, name: String, phone: String, address: String, vat: String) = tx {
         if (name.isBlank()) throw IllegalArgumentException("اسم الحساب مطلوب")
