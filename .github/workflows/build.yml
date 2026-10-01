@@ -2,7 +2,7 @@ name: Cloud Build Android
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/complete-app ]
   workflow_dispatch:
 
 permissions:
