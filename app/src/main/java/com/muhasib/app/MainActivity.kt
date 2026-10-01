@@ -186,6 +186,7 @@ fun RouteContent(n: Nav, r: Route, openDrawer: () -> Unit) {
         "accounts" -> AccountsScreen(n)
         "addacc" -> AddAccountScreen(n)
         "statement" -> StatementScreen(n, r.id, r.name)
+        "editacc" -> EditAccountScreen(n, r.id)
         "cash" -> CashScreen(n)
         "chart" -> ChartScreen(n)
         "items" -> ItemsScreen(n)
@@ -211,7 +212,13 @@ fun RouteContent(n: Nav, r: Route, openDrawer: () -> Unit) {
         "groups" -> SimpleListScreen(n, r.name, r.id.toInt())
         "tax" -> TaxScreen(n)
         "about" -> AboutScreen(n)
-        "closing" -> Page(n, "إقفال سنوي") { Empty("إقفال السنة غير متاح في هذه النسخة") }
+        "closing" -> ClosingScreen(n)
+        "security" -> SecurityScreen(n)
+        "printsettings" -> PrintSettingsScreen(n)
+        "data" -> DataSettingsScreen(n)
+        "thermal" -> ThermalPrinterScreen(n)
+        "notifications" -> NotificationSettingsScreen(n)
+        "otherSettings" -> OtherSettingsScreen(n)
     }
 }
 
@@ -276,18 +283,18 @@ fun Tile(icon: String, label: String, plus: (() -> Unit)?, modifier: Modifier, o
 fun SettingsScreen(n: Nav) {
     val items = listOf(
         Triple("🪪", "البيانات الشخصية", Route("personal")),
-        Triple("🖨️", "خيارات الطباعة", null),
-        Triple("🔒", "خيارات الأمان", null),
+        Triple("🖨️", "خيارات الطباعة", Route("printsettings")),
+        Triple("🔒", "خيارات الأمان", Route("security")),
         Triple("👤", "المستخدمين والصلاحيات", Route("users")),
         Triple("🏷️", "التصنيفات", Route("groups", 0, "التصنيفات")),
         Triple("🛍️", "مجموعة الصنف", Route("groups", 1, "مجموعة الصنف")),
         Triple("📦", "وحدات القياس", Route("groups", 2, "وحدات القياس")),
-        Triple("🗄️", "خيارات حفظ البيانات", null),
-        Triple("🧾", "الطابعة الحرارية", null),
+        Triple("🗄️", "خيارات حفظ البيانات", Route("data")),
+        Triple("🧾", "الطابعة الحرارية", Route("thermal")),
         Triple("💰", "الضريبة", Route("tax")),
-        Triple("▥", "طابعة باركود الأصناف", null),
-        Triple("🔔", "خيارات الإشعارات", null),
-        Triple("🛠️", "خيارات أخرى", null)
+        Triple("▥", "طابعة باركود الأصناف", Route("items")),
+        Triple("🔔", "خيارات الإشعارات", Route("notifications")),
+        Triple("🛠️", "خيارات أخرى", Route("otherSettings"))
     )
     Page(n, "إعدادات") {
         Column(Modifier.verticalScroll(rememberScrollState())) {
