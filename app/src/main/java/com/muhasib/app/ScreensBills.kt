@@ -156,7 +156,7 @@ fun InvoiceScreen(n: Nav, tr: Int, editId: Long? = null) {
             }
             Drop("العملة", currs, currId) { currId = it }
             Row(verticalAlignment = Alignment.Bottom) {
-                Field(date, { date = it }, "التاريخ", Modifier.weight(1f))
+                DatePickerField(date, { date = it }, "التاريخ", Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 Box(Modifier.weight(1.6f)) { SearchField(if (salesSide) "العميل" else "المورد", party, partyId) { partyId = it?.id } }
             }
