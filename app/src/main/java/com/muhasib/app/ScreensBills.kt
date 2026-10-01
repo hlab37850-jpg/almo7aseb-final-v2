@@ -107,7 +107,7 @@ fun InvoiceScreen(n: Nav, tr: Int, editId: Long? = null) {
     var qty by remember { mutableStateOf("1") }
     var price by remember { mutableStateOf("") }
     var pickKey by remember { mutableIntStateOf(0) }
-    var disc by remember(editId) { mutableStateOf(if (editing?.discount ?: 0.0) != 0.0) editing!!.discount.toString() else "" }
+    var disc by remember(editId) { mutableStateOf(if ((editing?.discount ?: 0.0) != 0.0)) editing!!.discount.toString() else "" }
     var taxId by remember(editId) { mutableLongStateOf(editing?.taxId ?: -1L) }
     var fees by remember(editId) { mutableStateOf(if ((editing?.fees ?: 0.0) != 0.0) editing!!.fees.toString() else "") }
     var paid by remember(editId) { mutableStateOf(if ((editing?.paid ?: 0.0) != 0.0) editing!!.paid.toString() else "") }
