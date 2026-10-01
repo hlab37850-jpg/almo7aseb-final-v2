@@ -100,7 +100,37 @@ fun StatementBody(n: Nav, id: Long) {
 }
 
 @Composable
-fun StatementScreen(n: Nav, id: Long, name: String) = Page(n, "كشف حساب: $name") { StatementBody(n, id) }
+fun StatementScreen(n: Nav, id: Long, name: String) {
+    Page(n, "كشف حساب: $name", actions = {
+        if (n.db.canDo(n.userId, 11, "edit")) BarIcon("✎") { n.push(Route("editacc", id, name)) }
+    }) { StatementBody(n, id) }
+}
+
+@Composable
+fun EditAccountScreen(n: Nav, id: Long) {
+    val data = remember(id) { n.db.accountDetails(id) }
+    if (data == null) {
+        Page(n, "تعديل الحساب") { Empty("الحساب غير موجود") }
+        return
+    }
+    var name by remember(id) { mutableStateOf(data.name) }
+    var phone by remember(id) { mutableStateOf(data.phone) }
+    var addr by remember(id) { mutableStateOf(data.address) }
+    var vat by remember(id) { mutableStateOf(data.vat) }
+    Page(n, "تعديل الحساب", actions = {
+        BarIcon("💾") {
+            val e = n.db.updateAccount(id, name, phone, addr, vat)
+            if (e == null) { n.toast("تم حفظ التعديلات"); n.bump(); n.pop() } else n.toast(e)
+        }
+    }) {
+        Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
+            Field(name, { name = it }, "اسم الحساب")
+            Field(phone, { phone = it }, "الهاتف")
+            Field(addr, { addr = it }, "العنوان")
+            Field(vat, { vat = it }, "الرقم الضريبي")
+        }
+    }
+}
 
 @Composable
 fun CashScreen(n: Nav) {
