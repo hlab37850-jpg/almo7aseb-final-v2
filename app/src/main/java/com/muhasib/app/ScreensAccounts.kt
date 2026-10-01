@@ -182,7 +182,7 @@ fun CurrPricesScreen(n: Nav) {
     Page(n, "سعر العملات") {
         Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
             Drop("اختر العملة", currs, curr) { curr = it }
-            Field(date, { date = it }, "من تاريخ (yyyy-MM-dd)"); Field(price, { price = it }, "السعر مقابل العملة المحلية", kb = numKb)
+            DatePickerField(date, { date = it }, "من تاريخ (yyyy-MM-dd)"); Field(price, { price = it }, "السعر مقابل العملة المحلية", kb = numKb)
             PillButton("حفظ السعر", Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp)) {
                 if (curr == null) n.toast("اختر العملة") else if (num(price) <= 0) n.toast("السعر غير صحيح")
                 else { val e = n.db.setCurrencyPrice(curr!!, date, num(price)); if (e == null) n.bump() else n.toast(e) }
